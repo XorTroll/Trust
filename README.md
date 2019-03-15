@@ -1,6 +1,6 @@
 # Trust
 
-An unstable (but working) attempt to compile rust to Nintendo Switch homebrew from 64-bit Windows 10.
+An unstable (but working) attempt to compile Rust to Nintendo Switch homebrew from 64-bit Windows 10.
 
 ## Rust + homebrew
 
