@@ -59,22 +59,18 @@ pub struct InRawValue
 {
     pub value: *mut u8,
     pub rawType: RawType,
-    pub rawOffset: usize,
 }
 
 pub struct OutRawValue
 {
     pub value: *mut u8,
     pub rawType: RawType,
-    pub rawOffset: usize,
 }
 
 pub struct SessionContext
 {
     pub inProcessId: bool,
-    pub inRaw: *mut u8,
     pub inRaws: Vec<InRawValue>,
-    pub inRawSize: u64,
     pub inCopyHandles: Vec<u32>,
     pub inMoveHandles: Vec<u32>,
     pub inObjectIds: Vec<u32>,
@@ -84,9 +80,7 @@ pub struct SessionContext
     pub outProcessId: u64,
     pub outHandles: Vec<u32>,
     pub outObjectIds: Vec<u32>,
-    pub outRaw: *const u8,
     pub outRaws: Vec<OutRawValue>,
-    pub outRawSize: u64,
     pub outBuffers: Vec<Buffer>,
     pub outStaticBuffers: Vec<StaticBuffer>,
     pub sessionHandle: u32,
@@ -100,9 +94,7 @@ impl SessionContext
         SessionContext
         {
             inProcessId: false,
-            inRaw: std::ptr::null_mut(),
             inRaws: Vec::new(),
-            inRawSize: 0,
             inCopyHandles: Vec::new(),
             inMoveHandles: Vec::new(),
             inObjectIds: Vec::new(),
@@ -112,9 +104,7 @@ impl SessionContext
             outProcessId: 0,
             outHandles: Vec::new(),
             outObjectIds: Vec::new(),
-            outRaw: std::ptr::null(),
             outRaws: Vec::new(),
-            outRawSize: 0,
             outBuffers: Vec::new(),
             outStaticBuffers: Vec::new(),
             sessionHandle: obj.handle,
@@ -126,17 +116,20 @@ impl SessionContext
     {
         let tls = arm::getThreadLocalStorage() as *mut u32;
 
-        self.inRawSize += (std::mem::align_of::<u64>() as u64) - 1;
-        self.inRawSize -= self.inRawSize % std::mem::align_of::<u64>() as u64;
-        let offmagic = self.inRawSize;
-        self.inRawSize += std::mem::size_of::<u64>() as u64;
+        let mut inrawsz: usize = 0;
+        inrawsz += std::mem::align_of::<u64>() - 1;
+        inrawsz -= inrawsz % std::mem::align_of::<u64>();
+        let offmagic = inrawsz;
+        inrawsz += std::mem::size_of::<u64>();
 
-        self.inRawSize += (std::mem::align_of::<u64>() as u64) - 1;
-        self.inRawSize -= self.inRawSize % std::mem::align_of::<u64>() as u64;
-        let offcmdid = self.inRawSize;
-        self.inRawSize += std::mem::size_of::<u64>() as u64;
+        inrawsz += std::mem::align_of::<u64>() - 1;
+        inrawsz -= inrawsz % std::mem::align_of::<u64>();
+        let offcmdid = inrawsz;
+        inrawsz += std::mem::size_of::<u64>();
 
-        for mut inraw in &mut self.inRaws
+        let mut rawoffs: Vec<usize> = Vec::new();
+
+        for inraw in &self.inRaws
         {
             let szof = match inraw.rawType
             {
@@ -156,10 +149,10 @@ impl SessionContext
                 RawType::U128 => std::mem::align_of::<u128>(),
                 RawType::RawData => std::mem::align_of_val(&inraw.value),
             };
-            self.inRawSize += (agof as u64) - 1;
-            self.inRawSize -= self.inRawSize % agof as u64;
-            inraw.rawOffset = self.inRawSize as usize;
-            self.inRawSize += szof as u64;
+            inrawsz += agof - 1;
+            inrawsz -= inrawsz % agof;
+            rawoffs.push(inrawsz);
+            inrawsz += szof;
         }
 
         let mut tlsi: isize = 0;
@@ -227,9 +220,10 @@ impl SessionContext
             *tls.offset(tlsi) = (buf.bufType | (((uptr >> 32) & 15) << 28) as u32 | (((uptr >> 36) << 2)) as u32) as u32;
             tlsi += 1;
         }
-        let pad = ((16 - ((tls as u32) & 15)) & 15) / 4;
+        let pad = ((16 - ((tls.offset(tlsi) as u32) & 15)) & 15) / 4;
+        let rtlsi = tlsi;
         let raw = tls.offset(tlsi + pad as isize) as *mut u8;
-        let mut rawsz = (self.inRawSize / 4) + 4;
+        let mut rawsz = (inrawsz / 4) + 4;
         tlsi += rawsz as isize;
         {
             let tls16 = (&mut *tls.offset(tlsi) as *mut u32) as *mut u16;
@@ -251,7 +245,7 @@ impl SessionContext
         }
         let u16s = ((2 * self.outStaticBuffers.len()) + 3) / 4;
         tlsi += u16s as isize;
-        rawsz += u16s as u64;
+        rawsz += u16s;
         *tls.offset(tlsifsz) |= rawsz as u32;
         for stbuf in &self.outStaticBuffers
         {
@@ -261,9 +255,10 @@ impl SessionContext
             *tls.offset(tlsi) = (uptr >> 32) as u32 | (stbuf.size << 16) as u32;
             tlsi += 1;
         }
-        self.inRaw = raw as *mut u8;
-        *(raw as *mut u64).offset(offmagic as isize) = 0x49434653;
+        *(raw as *mut u64).offset(offmagic as isize) = 0x49434653 as u64;
         *(raw as *mut u64).offset(offcmdid as isize) = command as u64;
+
+        let mut offi: usize = 0;
 
         for inraw in &self.inRaws
         {
@@ -271,44 +266,47 @@ impl SessionContext
             {
                 RawType::U8 =>
                 {
-                    *(raw as *mut u8).offset(inraw.rawOffset as isize) = *(inraw.value as *mut u8);
+                    *(raw as *mut u8).offset(rawoffs[offi] as isize) = *(inraw.value as *mut u8);
                 }
                 RawType::U16 =>
                 {
-                    *(raw as *mut u16).offset(inraw.rawOffset as isize) = *(inraw.value as *mut u16);
+                    *(raw as *mut u16).offset(rawoffs[offi] as isize) = *(inraw.value as *mut u16);
                 }
                 RawType::U32 =>
                 {
-                    *(raw as *mut u32).offset(inraw.rawOffset as isize) = *(inraw.value as *mut u32);
+                    *(raw as *mut u32).offset(rawoffs[offi] as isize) = *(inraw.value as *mut u32);
                 }
                 RawType::U64 =>
                 {
                     svc::outputDebugString(format!("InRaw u64: {}", *(inraw.value as *mut u64)));
-                    *(raw as *mut u64).offset(inraw.rawOffset as isize) = *(inraw.value as *mut u64);
+                    *(raw as *mut u64).offset(rawoffs[offi] as isize) = *(inraw.value as *mut u64);
                 }
                 RawType::U128 =>
                 {
-                    *(raw as *mut u128).offset(inraw.rawOffset as isize) = *(inraw.value as *mut u128);
+                    *(raw as *mut u128).offset(rawoffs[offi] as isize) = *(inraw.value as *mut u128);
                 }
                 RawType::RawData =>
                 {
-                    // (raw as *mut u8).offset(inraw.rawOffset as isize) = inraw.value as *mut u8;
+                    // (raw as *mut u8).offset(rawoffs[offi] as isize) = inraw.value as *mut u8;
                 }
             }
+            offi += 1;
         }
 
         let mut rc = svc::sendSyncRequest(self.sessionHandle);
         if rc == 0
         {
             tlsi = 0;
-            self.outRawSize += (std::mem::align_of::<u64>() as u64) - 1;
-            self.outRawSize -= self.outRawSize % std::mem::align_of::<u64>() as u64;
-            self.outRawSize += std::mem::size_of::<u64>() as u64;
+            let mut orawsz: usize = 0;
+            orawsz += std::mem::align_of::<u64>() - 1;
+            orawsz -= orawsz % std::mem::align_of::<u64>();
+            let offsfco = orawsz;
+            orawsz += std::mem::size_of::<u64>();
 
-            self.outRawSize += (std::mem::align_of::<u64>() as u64) - 1;
-            self.outRawSize -= self.outRawSize % std::mem::align_of::<u64>() as u64;
-            let offrc = self.outRawSize;
-            self.outRawSize += std::mem::size_of::<u64>() as u64;
+            orawsz += std::mem::align_of::<u64>() - 1;
+            orawsz -= orawsz % std::mem::align_of::<u64>();
+            let offrc = orawsz;
+            orawsz += std::mem::size_of::<u64>();
 
             let ctrl0 = *tls.offset(tlsi);
             tlsi += 1;
@@ -353,9 +351,8 @@ impl SessionContext
             let brnum = (ctrl0 >> 24) & 15;
             let benum = (ctrl0 >> 28) & 15;
             let bufnum = bsnum + brnum + benum;
-            let oraw = (((tls.offset(tlsi + (bufnum * 3) as isize) as u32) + 15) &! 15) as *const u8;
-            self.outRaw = oraw;
-            rc = *(oraw as *const u64).offset(offrc as isize) as u64 as u32;
+            let oraw = (((tls.offset(tlsi + (bufnum * 3) as isize) as u64) + 15) &! 15) as *const u8;
+            rc = (*(oraw as *mut u64).offset(offrc as isize) as u64) as u32;
         }
         rc
     }

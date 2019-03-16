@@ -31,18 +31,18 @@ fn main()
         {
             let mut ctx = hipc::SessionContext::forObject(&sm);
             ctx.inProcessId = true;
-            ctx.inRaws.push( hipc::InRawValue { value: &(0 as u64) as *const u64 as *mut u8, rawOffset: 0, rawType: hipc::RawType::U64 } );
-            ctx.inRaws.push( hipc::InRawValue { value: &(0 as u64) as *const u64 as *mut u8, rawOffset: 0, rawType: hipc::RawType::U64 } );
-            ctx.inRaws.push( hipc::InRawValue { value: &(0 as u64) as *const u64 as *mut u8, rawOffset: 0, rawType: hipc::RawType::U64 } );
-            let src = ctx.processRequest(0);
+            ctx.inRaws.push( hipc::InRawValue { value: &(0 as u64) as *const u64 as *mut u8, rawType: hipc::RawType::U64 } );
+            ctx.inRaws.push( hipc::InRawValue { value: &(0 as u64) as *const u64 as *mut u8, rawType: hipc::RawType::U64 } );
+            ctx.inRaws.push( hipc::InRawValue { value: &(0 as u64) as *const u64 as *mut u8, rawType: hipc::RawType::U64 } );
+            let src = ctx.processRequest(110);
             svc::outputDebugString(format!("Result: {}", src));
         }
         {
             let mut ctx = hipc::SessionContext::forObject(&sm);
             let srv = encodeService(String::from("psm"));
-            ctx.inRaws.push( hipc::InRawValue { value: &srv as *const u64 as *mut u8, rawOffset: 0, rawType: hipc::RawType::U64 } );
-            ctx.inRaws.push( hipc::InRawValue { value: &(0 as u64) as *const u64 as *mut u8, rawOffset: 0, rawType: hipc::RawType::U64 } );
-            ctx.inRaws.push( hipc::InRawValue { value: &(0 as u64) as *const u64 as *mut u8, rawOffset: 0, rawType: hipc::RawType::U64 } );
+            ctx.inRaws.push( hipc::InRawValue { value: &srv as *const u64 as *mut u8, rawType: hipc::RawType::U64 } );
+            ctx.inRaws.push( hipc::InRawValue { value: &(0 as u64) as *const u64 as *mut u8, rawType: hipc::RawType::U64 } );
+            ctx.inRaws.push( hipc::InRawValue { value: &(0 as u64) as *const u64 as *mut u8, rawType: hipc::RawType::U64 } );
             let src = ctx.processRequest(1);
             svc::outputDebugString(format!("Result: {}, Handle: {}", src, ctx.outHandles.len()));
         }
