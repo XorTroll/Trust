@@ -2,6 +2,8 @@
 
 An unstable (but working) attempt to compile Rust to Nintendo Switch homebrew from 64-bit Windows 10.
 
+## **IMPORTANT!** this project is no longer continued. For Rust support for 64-bit Nintendo Switch homebrew, check [here](https://github.com/aarch64-switch-rs/cargo-nx/pull/19).  
+
 ## Rust + homebrew
 
 All plain Rust, except using a [custom std fork (libnx-rs-std)](https://github.com/ischeinkman/libnx-rs-std) to make it work fine.
